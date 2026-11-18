@@ -20,17 +20,26 @@ Applies to any interactive CLI (telnet, serial console, ssh, REPL, installer). T
 - Human takeover: on an unexpected state (`rommon >`, password recovery, a prompt you don't recognize, a timeout), stop
   sending and tell the operator.
 
-## Reusable pattern: one agent pane
-Start every task with `P=$(wez_expect.py ensure --cwd "$PWD")`, not `spawn`.
-- Reuses the registered agent pane in the operator's window (titled `agent`), or spawns it if missing or closed.
-- On reuse it first requires a clean `[wez]$` prompt (otherwise the human is mid-command: stop and ask), then does
+## The dedicated WezTerm
+This work uses one dedicated WezTerm, never the operator's regular one. The operator starts it from a terminal outside
+WezTerm: `scripts/start_wezterm.sh`. It opens one window with one pane: bash (`bash --norc --noprofile`, prompt `[wez]$ `),
+titled `agent`, with a `== AGENT PANE (bash) ==` banner. The script records the instance in `~/.cache/wez_expect/instance`.
+It refuses to start a second one while the first is running.
+
+The helper talks only to that instance. If it isn't running, every command stops with "run scripts/start_wezterm.sh first".
+It never falls back to another WezTerm. If the agent pane is closed, the window closes with it; ask the operator to
+re-run the start script.
+
+Start every task with `P=$(wez_expect.py ensure --cwd "$PWD")`.
+- It finds the agent pane and reuses it. It never creates a pane unless you pass `--spawn-if-missing`.
+- On reuse it requires a clean `[wez]$` prompt (otherwise the human is mid-command: stop and ask), then runs
   `cd <cwd> && clear`.
-- The pane stays open between tasks. Only the operator, or an explicit `close`, removes it.
+- `wez_expect.py status` proves what the pane is: its title, tty and the processes on that tty (expect `bash`).
 - `spawn` is the low-level call (extra panes, `--tab`, or a non-bash command such as telnet).
 
 ## Helper commands
     P=$(wez_expect.py spawn [--cwd DIR] [-- CMD...])   # prints pane id; default CMD is the bash above
-    wez_expect.py where                                # operator's visible pane/workspace
+    wez_expect.py where                                # focused pane in the dedicated WezTerm
     wez_expect.py send $P "<cmd>" [--expect RE] [--timeout S] [--confirmed]
     wez_expect.py read $P [--lines N]
     wez_expect.py close $P
@@ -57,4 +66,4 @@ Thompson's original (the B tutorial) is lowercase with a comma, no capitals, and
 
 ## Tests
 `uv run --no-project --with pytest pytest` runs the pure-logic tests. `WEZ_LIVE=1 ... pytest tests/test_live.py -v -s` runs
-the live suite against the running WezTerm (watch the window); it closes the panes it creates.
+the live suite in its own throwaway dedicated instance (run it outside WezTerm; it never touches yours).
