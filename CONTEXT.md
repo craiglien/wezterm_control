@@ -20,7 +20,9 @@ interactive CLI. The main target is telnet sessions to lab devices.
 - **The helper only talks to the dedicated instance.** It reads the socket from `~/.cache/wez_expect/instance` and refuses
   if that instance isn't running; no fallback to another WezTerm (two GUI processes make `wezterm cli` ambiguous).
 - **`ensure` reuses the agent pane** and never creates panes unless `--spawn-if-missing`. On reuse it requires a clean
-  `[wez]$` prompt (otherwise a human is mid-command: stop), then runs `cd <dir> && clear`.
+  `[wez]$` prompt (otherwise a human is mid-command: stop), then runs `cd <dir>`. It never clears the screen: the operator wants to watch, so history and the banner stay.
+  While testing, `--announce` (or `WEZ_ANNOUNCE=1`) prints `# == agent: <op> ==` marker lines in the pane; off by default so real
+  work isn't noisy.
 - **Closing the only pane closes the window.** The instance is gone and must be restarted with the start script.
 - **Registry keyed by WezTerm process.** Pane ids restart on each launch, so stale entries could match unrelated panes.
 - **`status` proves the agent pane runs bash** (title, tty, processes on the tty).
@@ -32,14 +34,15 @@ interactive CLI. The main target is telnet sessions to lab devices.
 - **`--no-paste` and `\r`.** Bracketed paste or LF can stall console prompts.
 
 ## Gotchas
-- `clear` wipes the screen, which breaks the before/after output tracking, so reset waits for a bare prompt instead.
+- An earlier reset ran `clear`, which erased the banner and made `ensure` look like a flash with nothing to see; removed.
 - `send` appends CR unless `--no-enter` is passed (needed for control keys such as telnet's `\x1d`).
 - Pager prompts (`--More--`, `(END)`) are answered automatically with a space.
 - Tests once closed the pane and ran too fast to watch. Live tests now leave the agent pane open and take `WEZ_PACE`.
 - Run Python with `uv run --no-project` (never bare `uv run`; it would sync the global venv to this project).
 
 ## Status
-- Verified: the start script (one agent pane, bash, refuses a second start), the live suite in a throwaway instance, local bash flows, unit tests, the live suite, and telnet connect / escape / quit.
+- Verified: the start script (one agent pane, bash, refuses a second start), the live suite in a throwaway instance,
+  local bash flows, unit tests, and telnet connect / escape / quit.
 - Not verified: a real telnet login, `Router>` / `Router#` prompts, a `--More--` pager in real device output, a device
   that stops responding, more than one operator window, and several agent panes visible at once.
 
