@@ -35,7 +35,7 @@ if running "$name"; then
   exit 1
 fi
 
-WEZ_CONTROL_DIR="$root" nohup wezterm --config-file "$root/wezterm/agent_wezterm.lua" \
+WEZ_CONTROL_DIR="$root" WEZ_INSTANCE_NAME="$name" nohup wezterm --config-file "$root/wezterm/agent_wezterm.lua" \
   start --always-new-process --class "wezctl-$name" >"$state_dir/wezterm.$name.log" 2>&1 &
 disown
 

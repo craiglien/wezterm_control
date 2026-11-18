@@ -4,9 +4,10 @@
 local M = {}
 
 M.title = 'agent'
+M.name = os.getenv('WEZ_INSTANCE_NAME') or 'default'  -- set by scripts/start_wezterm.sh; shown so instances can be told apart
 M.args = {
   'bash', '-c',
-  "printf '\\033]2;agent\\007'; printf '== AGENT PANE (bash) ==\\n'; "
+  "printf '\\033]2;agent\\007'; printf '== AGENT PANE (bash) == %s ==\\n' '" .. M.name .. "'; "
     .. "exec env 'PS1=[wez]$ ' bash --norc --noprofile",
 }
 

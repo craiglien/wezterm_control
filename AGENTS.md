@@ -23,8 +23,8 @@ Applies to any interactive CLI (telnet, serial console, ssh, REPL, installer). T
 ## The dedicated WezTerm
 This work uses dedicated WezTerms, never the operator's regular one. The operator starts one from a terminal outside
 WezTerm: `scripts/start_wezterm.sh NAME` (`--list` shows running ones). Names are unique; a duplicate is refused. It opens
-one window with one pane: bash (`bash --norc --noprofile`, prompt `[wez]$ `), titled `agent`, with a `== AGENT PANE (bash) ==`
-banner, and prints a prompt for the operator to paste into the Claude Code session that will drive it (also saved to
+one window with one pane: bash (`bash --norc --noprofile`, prompt `[wez]$ `), titled `agent`, with a `== AGENT PANE (bash) == NAME ==`
+banner and the window title `AGENT: NAME`, and prints a prompt for the operator to paste into the Claude Code session that will drive it (also saved to
 `~/.cache/wez_expect/NAME.prompt`). The instance runs with `--class wezctl-NAME`.
 
 The helper talks only to the instance it is told to. Every call needs `--instance NAME` or `WEZ_INSTANCE=NAME`; with no name

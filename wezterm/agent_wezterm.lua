@@ -10,4 +10,9 @@ wezterm.on('gui-startup', function(cmd)
   agent.spawn_window(wezterm.mux, cmd)
 end)
 
+-- The window title is the only GUI-side label; put the instance name in it.
+wezterm.on('format-window-title', function()
+  return 'AGENT: ' .. agent.name
+end)
+
 return config
