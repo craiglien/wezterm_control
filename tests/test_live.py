@@ -17,14 +17,17 @@ PACE = float(os.environ.get("WEZ_PACE", 0))
 
 @pytest.fixture(scope="module")
 def instance(tmp_path_factory):
-    state_dir = tmp_path_factory.mktemp("wez_state")
-    env = {**os.environ, "WEZ_STATE_DIR": str(state_dir)}
+    name = f"test{os.getpid()}"
+    env = {**os.environ, "WEZ_STATE_DIR": str(tmp_path_factory.mktemp("wez_state"))}
     env.pop("WEZTERM_PANE", None)
-    out = subprocess.run([str(ROOT / "scripts" / "start_wezterm.sh")], env=env, capture_output=True, text=True)
+    script = str(ROOT / "scripts" / "start_wezterm.sh")
+    out = subprocess.run([script, name], env=env, capture_output=True, text=True)
     assert out.returncode == 0, out.stdout + out.stderr
-    pid = int((state_dir / "instance").read_text().split()[0])
-    w.STATE = state_dir / "instance"
-    os.environ["WEZ_STATE_DIR"] = str(state_dir)
+    assert f'WEZ_INSTANCE={name}' in out.stdout  # the pasteable prompt names the instance
+    dup = subprocess.run([script, name], env=env, capture_output=True, text=True)
+    assert dup.returncode != 0 and "already running" in dup.stderr  # unique names or fail loudly
+    os.environ["WEZ_INSTANCE"] = w.INSTANCE = name
+    pid = w.gui_pid()
     yield pid
     os.kill(pid, signal.SIGTERM)
 
@@ -78,12 +81,10 @@ def test_announce_markers_only_when_asked(instance):
 
 def test_dirty_prompt_refuses_reset(instance):
     p = helper("ensure", "--cwd", str(ROOT)).stdout.strip()
-    subprocess.run(["wezterm", "cli", "send-text", "--pane-id", p, "--no-paste", "half typed"], check=True,
-                   env={**os.environ, "WEZTERM_UNIX_SOCKET": w.instance_socket()})
+    w.wez("send-text", "--pane-id", p, "--no-paste", "half typed")
     r = helper("ensure", check=False)
     assert r.returncode != 0 and "human takeover" in r.stderr
-    subprocess.run(["wezterm", "cli", "send-text", "--pane-id", p, "--no-paste", "\x15"], check=True,  # Ctrl-U
-                   env={**os.environ, "WEZTERM_UNIX_SOCKET": w.instance_socket()})
+    w.wez("send-text", "--pane-id", p, "--no-paste", "\x15")  # Ctrl-U
 
 
 def test_hello_world_end_to_end(instance):
@@ -93,7 +94,13 @@ def test_hello_world_end_to_end(instance):
     assert "hello, world" in helper("send", p, "python3 hello.py").stdout
 
 
-def test_helper_refuses_without_instance(tmp_path):
-    env = {**os.environ, "WEZ_STATE_DIR": str(tmp_path)}  # no state file here
+def test_helper_refuses_without_instance_name():
+    env = {k: v for k, v in os.environ.items() if k != "WEZ_INSTANCE"}
     r = subprocess.run([sys.executable, "-I", S, "where"], capture_output=True, text=True, env=env)
-    assert r.returncode != 0 and "start_wezterm.sh" in r.stderr
+    assert r.returncode != 0 and "--instance" in r.stderr
+
+
+def test_helper_refuses_unknown_instance():
+    env = {**os.environ, "WEZ_INSTANCE": "nosuchinstance"}
+    r = subprocess.run([sys.executable, "-I", S, "where"], capture_output=True, text=True, env=env)
+    assert r.returncode != 0 and "not running" in r.stderr

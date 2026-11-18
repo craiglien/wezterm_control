@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drive a pane in a running WezTerm GUI via `wezterm cli`. Stdlib only.
 
-Usage (global: --announce, or WEZ_ANNOUNCE=1, prints marker lines in the pane while testing):
+Usage (global: --instance NAME or WEZ_INSTANCE=NAME, required; --announce, or WEZ_ANNOUNCE=1, prints marker lines in the pane while testing):
   wez_expect.py spawn [--anchor PANE] [--tab] [--cwd DIR] [-- CMD...]   # default CMD: bash (prompt '[wez]$ ')
   wez_expect.py ensure [--anchor PANE] [--cwd DIR]   # reuse the agent pane (spawn only with --spawn-if-missing); prints pane id
   wez_expect.py status [--anchor PANE]          # prove which pane is the agent's and what it is running
@@ -23,22 +23,35 @@ SCROLLBACK = 2000
 ANNOUNCE = bool(os.environ.get("WEZ_ANNOUNCE"))  # testing only: --announce or WEZ_ANNOUNCE=1
 
 
-STATE = Path(os.environ.get("WEZ_STATE_DIR", Path.home() / ".cache/wez_expect")) / "instance"
+INSTANCE = os.environ.get("WEZ_INSTANCE", "")  # set by --instance or WEZ_INSTANCE; no default, no auto-pick
+NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def instance_class() -> str:
+    """WezTerm class of the dedicated instance started by `scripts/start_wezterm.sh NAME`. Never falls back."""
+    if not NAME_RE.fullmatch(INSTANCE):
+        sys.exit("no instance named; pass --instance NAME or set WEZ_INSTANCE (see scripts/start_wezterm.sh --list)")
+    return f"wezctl-{INSTANCE}"
 
 
 def instance_socket() -> str:
-    """Socket of the dedicated WezTerm started by scripts/start_wezterm.sh. Never falls back to another instance."""
-    try:
-        pid, sock = STATE.read_text().split()[:2]
-        os.kill(int(pid), 0)
-    except (OSError, ValueError):
-        sys.exit("no dedicated WezTerm running; run scripts/start_wezterm.sh first")
-    return sock
+    """Socket of the GUI started with `--class wezctl-NAME`. (`--always-new-process` creates no class symlink, so
+    `wezterm cli --class` cannot find it; match the process instead.)"""
+    cls = instance_class()
+    ps = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
+    pids = [l.split(None, 1)[0] for l in ps.splitlines() if l.rstrip().endswith(f"--class {cls}") and "wezterm-gui" in l]
+    sock = Path.home() / ".local/share/wezterm" / f"gui-sock-{pids[0]}" if pids else None
+    if sock is None or not sock.exists():
+        sys.exit(f"instance '{INSTANCE}' is not running; run scripts/start_wezterm.sh {INSTANCE} first")
+    return str(sock)
 
 
 def wez(*args: str) -> str:
     env = {**os.environ, "WEZTERM_UNIX_SOCKET": instance_socket()}
-    return subprocess.run(["wezterm", "cli", *args], check=True, capture_output=True, text=True, env=env).stdout
+    r = subprocess.run(["wezterm", "cli", "--no-auto-start", *args], capture_output=True, text=True, env=env)
+    if r.returncode:
+        sys.exit(f"wezterm cli {args[0]} failed on instance '{INSTANCE}': {r.stderr.strip()}")
+    return r.stdout
 
 
 def panes() -> list[dict]:
@@ -154,7 +167,7 @@ def gui_pid() -> int:
 
 def registry() -> Path:
     """Per-GUI-process registry: pane ids restart when WezTerm restarts, so old entries must not carry over."""
-    return REGISTRY.with_name(f"{REGISTRY.name}.{gui_pid()}")
+    return REGISTRY.with_name(f"{REGISTRY.name}.{INSTANCE}.{gui_pid()}")
 
 
 def owned(pane: str) -> bool:
@@ -193,6 +206,7 @@ def wait_for(pane: str, before: list[str], pattern: str, timeout: float) -> list
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--instance", help="name given to scripts/start_wezterm.sh (or WEZ_INSTANCE)")
     ap.add_argument("--announce", action="store_true", help="testing: print a marker line in the pane for status/ensure")
     sub = ap.add_subparsers(dest="op", required=True)
     sp = sub.add_parser("spawn"); sp.add_argument("--cwd"); sp.add_argument("--anchor", help="pane id in the operator's visible window")
@@ -208,8 +222,9 @@ def main(argv: list[str]) -> int:
     rd = sub.add_parser("read"); rd.add_argument("pane"); rd.add_argument("--lines", type=int, default=50)
     cl = sub.add_parser("close"); cl.add_argument("pane")
     a = ap.parse_args(argv)
-    global ANNOUNCE
+    global ANNOUNCE, INSTANCE
     ANNOUNCE = ANNOUNCE or a.announce
+    INSTANCE = a.instance or INSTANCE
 
     if a.op == "spawn":
         anchor = resolve_anchor(a.anchor)

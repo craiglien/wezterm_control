@@ -48,22 +48,26 @@ def test_lua_layout_matches_helper():
     assert w.AGENT_TITLE in lua and "PS1=[wez]$ " in lua and "--norc --noprofile" in lua
 
 
-def test_no_instance_means_refuse(tmp_path, monkeypatch):
-    monkeypatch.setattr(w, "STATE", tmp_path / "missing")
+def test_instance_name_required(monkeypatch):
+    monkeypatch.setattr(w, "INSTANCE", "")
     with pytest.raises(SystemExit):
-        w.instance_socket()
+        w.instance_class()
 
 
-def test_dead_instance_means_refuse(tmp_path, monkeypatch):
-    state = tmp_path / "instance"
-    state.write_text("999999\n/tmp/sock\n")  # pid that does not exist
-    monkeypatch.setattr(w, "STATE", state)
+def test_instance_class_prefix(monkeypatch):
+    monkeypatch.setattr(w, "INSTANCE", "lab-r1")
+    assert w.instance_class() == "wezctl-lab-r1"
+
+
+def test_bad_instance_name_refused(monkeypatch):
+    monkeypatch.setattr(w, "INSTANCE", "a b;rm")
     with pytest.raises(SystemExit):
-        w.instance_socket()
+        w.instance_class()
 
 
-def test_live_instance_returns_socket(tmp_path, monkeypatch):
-    state = tmp_path / "instance"
-    state.write_text(f"{os.getpid()}\n/tmp/sock\n")
-    monkeypatch.setattr(w, "STATE", state)
-    assert w.instance_socket() == "/tmp/sock"
+def test_registry_keyed_by_instance(monkeypatch):
+    monkeypatch.setattr(w, "gui_pid", lambda: 1)
+    monkeypatch.setattr(w, "INSTANCE", "a")
+    pa = w.registry()
+    monkeypatch.setattr(w, "INSTANCE", "b")
+    assert w.registry() != pa

@@ -21,14 +21,15 @@ Applies to any interactive CLI (telnet, serial console, ssh, REPL, installer). T
   sending and tell the operator.
 
 ## The dedicated WezTerm
-This work uses one dedicated WezTerm, never the operator's regular one. The operator starts it from a terminal outside
-WezTerm: `scripts/start_wezterm.sh`. It opens one window with one pane: bash (`bash --norc --noprofile`, prompt `[wez]$ `),
-titled `agent`, with a `== AGENT PANE (bash) ==` banner. The script records the instance in `~/.cache/wez_expect/instance`.
-It refuses to start a second one while the first is running.
+This work uses dedicated WezTerms, never the operator's regular one. The operator starts one from a terminal outside
+WezTerm: `scripts/start_wezterm.sh NAME` (`--list` shows running ones). Names are unique; a duplicate is refused. It opens
+one window with one pane: bash (`bash --norc --noprofile`, prompt `[wez]$ `), titled `agent`, with a `== AGENT PANE (bash) ==`
+banner, and prints a prompt for the operator to paste into the Claude Code session that will drive it (also saved to
+`~/.cache/wez_expect/NAME.prompt`). The instance runs with `--class wezctl-NAME`.
 
-The helper talks only to that instance. If it isn't running, every command stops with "run scripts/start_wezterm.sh first".
-It never falls back to another WezTerm. If the agent pane is closed, the window closes with it; ask the operator to
-re-run the start script.
+The helper talks only to the instance it is told to. Every call needs `--instance NAME` or `WEZ_INSTANCE=NAME`; with no name
+or a name that isn't running it stops with an error. It never picks one for you and never falls back to another WezTerm. If
+the agent pane is closed, the window closes with it; ask the operator to re-run the start script.
 
 Start every task with `P=$(wez_expect.py ensure --cwd "$PWD")`.
 - It finds the agent pane and reuses it. It never creates a pane unless you pass `--spawn-if-missing`.
