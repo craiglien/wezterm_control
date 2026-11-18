@@ -33,7 +33,9 @@ re-run the start script.
 Start every task with `P=$(wez_expect.py ensure --cwd "$PWD")`.
 - It finds the agent pane and reuses it. It never creates a pane unless you pass `--spawn-if-missing`.
 - On reuse it requires a clean `[wez]$` prompt (otherwise the human is mid-command: stop and ask), then runs
-  `cd <cwd> && clear`.
+  `cd <cwd>`. It does not clear the screen, so the operator can scroll back through the whole session.
+- While testing, add `--announce` (or `WEZ_ANNOUNCE=1`) so `status` and `ensure` print a `# == agent: <op> ==` marker line in the
+  pane for the operator. Off by default: real work runs many commands and should stay quiet.
 - `wez_expect.py status` proves what the pane is: its title, tty and the processes on that tty (expect `bash`).
 - `spawn` is the low-level call (extra panes, `--tab`, or a non-bash command such as telnet).
 
