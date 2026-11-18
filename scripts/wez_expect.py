@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drive a pane in a running WezTerm GUI via `wezterm cli`. Stdlib only.
 
-Usage:
+Usage (global: --announce, or WEZ_ANNOUNCE=1, prints marker lines in the pane while testing):
   wez_expect.py spawn [--anchor PANE] [--tab] [--cwd DIR] [-- CMD...]   # default CMD: bash (prompt '[wez]$ ')
   wez_expect.py ensure [--anchor PANE] [--cwd DIR]   # reuse the agent pane (spawn only with --spawn-if-missing); prints pane id
   wez_expect.py status [--anchor PANE]          # prove which pane is the agent's and what it is running
@@ -20,6 +20,7 @@ DESTRUCTIVE_RE = re.compile(
 )
 REGISTRY = Path(os.environ.get("WEZ_REGISTRY", Path.home() / ".cache/wez_expect/panes"))
 SCROLLBACK = 2000
+ANNOUNCE = bool(os.environ.get("WEZ_ANNOUNCE"))  # testing only: --announce or WEZ_ANNOUNCE=1
 
 
 STATE = Path(os.environ.get("WEZ_STATE_DIR", Path.home() / ".cache/wez_expect")) / "instance"
@@ -110,19 +111,22 @@ def is_clean_prompt(lines: list[str]) -> bool:
     return bool(lines) and re.fullmatch(r"\[wez\]\$", lines[-1]) is not None
 
 
+def announce(pane: str, msg: str) -> None:
+    """Testing aid: print a one-line comment marker in the pane so the operator can follow along. Off by default."""
+    if ANNOUNCE and is_clean_prompt(get_lines(pane)):
+        before = get_lines(pane)
+        send(pane, f"# == agent: {msg} ==\r")
+        wait_for(pane, before, PROMPT_RE, 5)
+
+
 def reset_pane(pane: str, cwd: str | None) -> None:
-    """Between tasks: require a clean prompt (else the human is mid-command), then cd + clear."""
+    """Between tasks: require a clean prompt (else the human is mid-command), then cd. History stays on screen."""
     if not is_clean_prompt(get_lines(pane)):
         sys.exit(f"pane {pane} is not at a clean '[wez]$' prompt; human takeover needed")
-    send(pane, f"cd {shlex.quote(cwd or os.getcwd())} && clear\r")
-    # `clear` wipes the screen, so the usual before/after delta doesn't apply: wait for a bare prompt instead.
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        time.sleep(0.5)
-        lines = get_lines(pane)
-        if is_clean_prompt(lines) and not any("&& clear" in l for l in lines):
-            return
-    sys.exit(f"pane {pane} did not return to a clean prompt after reset; human takeover needed")
+    announce(pane, "ensure")
+    before = get_lines(pane)
+    send(pane, f"cd {shlex.quote(cwd or os.getcwd())}\r")
+    wait_for(pane, before, PROMPT_RE, 10)
 
 
 def get_lines(pane: str, n: int = SCROLLBACK) -> list[str]:
@@ -189,6 +193,7 @@ def wait_for(pane: str, before: list[str], pattern: str, timeout: float) -> list
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--announce", action="store_true", help="testing: print a marker line in the pane for status/ensure")
     sub = ap.add_subparsers(dest="op", required=True)
     sp = sub.add_parser("spawn"); sp.add_argument("--cwd"); sp.add_argument("--anchor", help="pane id in the operator's visible window")
     sp.add_argument("--tab", action="store_true", help="new tab instead of a split beside the anchor"); sp.add_argument("cmd", nargs="*")
@@ -203,6 +208,8 @@ def main(argv: list[str]) -> int:
     rd = sub.add_parser("read"); rd.add_argument("pane"); rd.add_argument("--lines", type=int, default=50)
     cl = sub.add_parser("close"); cl.add_argument("pane")
     a = ap.parse_args(argv)
+    global ANNOUNCE
+    ANNOUNCE = ANNOUNCE or a.announce
 
     if a.op == "spawn":
         anchor = resolve_anchor(a.anchor)
@@ -226,6 +233,7 @@ def main(argv: list[str]) -> int:
         pane = find_agent_pane(anchor)
         if pane is None:
             sys.exit("no agent pane in the operator's window")
+        announce(pane, "status")
         info = next(p for p in panes() if str(p["pane_id"]) == pane)
         print(f"agent pane={pane} window={info['window_id']} title={info['title']} tty={info['tty_name']}")
         print(subprocess.run(["ps", "-t", info["tty_name"].removeprefix("/dev/"), "-o", "pid,command"],

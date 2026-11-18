@@ -61,6 +61,21 @@ def test_ensure_reuses_without_new_panes_and_resets_cwd(instance):
     assert str(ROOT) in helper("send", p2, "pwd").stdout
 
 
+def test_ensure_keeps_history_and_banner(instance):
+    p = helper("ensure", "--cwd", str(ROOT)).stdout.strip()
+    helper("send", p, "echo marker-one")
+    helper("ensure", "--cwd", str(ROOT))
+    text = w.wez("get-text", "--pane-id", p, "--start-line", "-200")
+    assert "== AGENT PANE (bash) ==" in text and "marker-one" in text  # not cleared
+    assert "== agent:" not in text  # quiet by default
+
+
+def test_announce_markers_only_when_asked(instance):
+    p = helper("ensure", "--cwd", str(ROOT)).stdout.strip()
+    helper("--announce", "status")
+    assert "# == agent: status ==" in w.wez("get-text", "--pane-id", p, "--start-line", "-200")
+
+
 def test_dirty_prompt_refuses_reset(instance):
     p = helper("ensure", "--cwd", str(ROOT)).stdout.strip()
     subprocess.run(["wezterm", "cli", "send-text", "--pane-id", p, "--no-paste", "half typed"], check=True,
