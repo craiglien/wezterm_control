@@ -3,8 +3,9 @@
 
 Usage:
   wez_expect.py spawn [--anchor PANE] [--tab] [--cwd DIR] [-- CMD...]   # default CMD: bash (prompt '[wez]$ ')
-  wez_expect.py ensure [--anchor PANE] [--cwd DIR]   # reuse the agent pane, or spawn it; prints pane id
-  wez_expect.py where                           # show the operator's visible pane/workspace
+  wez_expect.py ensure [--anchor PANE] [--cwd DIR]   # reuse the agent pane (spawn only with --spawn-if-missing); prints pane id
+  wez_expect.py status [--anchor PANE]          # prove which pane is the agent's and what it is running
+  wez_expect.py where                           # show the focused pane in the dedicated WezTerm
   wez_expect.py send PANE CMD [--expect RE] [--timeout S] [--confirmed] [--no-enter]
   wez_expect.py read PANE [--lines N]
   wez_expect.py close PANE
@@ -21,8 +22,22 @@ REGISTRY = Path(os.environ.get("WEZ_REGISTRY", Path.home() / ".cache/wez_expect/
 SCROLLBACK = 2000
 
 
+STATE = Path(os.environ.get("WEZ_STATE_DIR", Path.home() / ".cache/wez_expect")) / "instance"
+
+
+def instance_socket() -> str:
+    """Socket of the dedicated WezTerm started by scripts/start_wezterm.sh. Never falls back to another instance."""
+    try:
+        pid, sock = STATE.read_text().split()[:2]
+        os.kill(int(pid), 0)
+    except (OSError, ValueError):
+        sys.exit("no dedicated WezTerm running; run scripts/start_wezterm.sh first")
+    return sock
+
+
 def wez(*args: str) -> str:
-    return subprocess.run(["wezterm", "cli", *args], check=True, capture_output=True, text=True).stdout
+    env = {**os.environ, "WEZTERM_UNIX_SOCKET": instance_socket()}
+    return subprocess.run(["wezterm", "cli", *args], check=True, capture_output=True, text=True, env=env).stdout
 
 
 def panes() -> list[dict]:
@@ -34,14 +49,21 @@ def operator_pane() -> dict:
     clients = json.loads(wez("list-clients", "--format", "json"))
     if not clients:
         sys.exit("no WezTerm GUI client attached; ask the operator to launch WezTerm")
-    focused = max(clients, key=lambda c: -c["idle_time"]["secs"])["focused_pane_id"]
-    return next(p for p in panes() if p["pane_id"] == focused)
+    client = max(clients, key=lambda c: -c["idle_time"]["secs"])
+    everything = panes()
+    if client["focused_pane_id"] is not None:
+        return next(p for p in everything if p["pane_id"] == client["focused_pane_id"])
+    # GUI window has no focus (e.g. just launched): fall back to an active pane in the client's workspace.
+    active = [p for p in everything if p["workspace"] == client["workspace"] and p["is_active"]]
+    if not active:
+        sys.exit("could not tell which pane the operator is looking at")
+    return active[0]
 
 
 AGENT_TITLE = "agent"
 DEFAULT_CMD = [
     "bash", "-c",
-    f"printf '\\033]2;{AGENT_TITLE}\\007'; exec env 'PS1=[wez]$ ' bash --norc --noprofile",
+    f"printf '\\033]2;{AGENT_TITLE}\\007'; printf '== AGENT PANE (bash) ==\\n'; exec env 'PS1=[wez]$ ' bash --norc --noprofile",
 ]
 
 
@@ -69,14 +91,19 @@ def spawn_pane(anchor: dict, cwd: str | None, cmd: list[str], tab: bool) -> str:
 
 
 def find_agent_pane(anchor: dict) -> str | None:
-    """A registered, still-alive agent pane in the operator's window; prunes dead registry entries."""
+    """The agent pane in the operator's window: a registered live pane, else one the layout titled `agent`."""
     live = {str(p["pane_id"]): p for p in panes()}
-    reg = REGISTRY.read_text().split() if REGISTRY.exists() else []
+    reg = registry().read_text().split() if registry().exists() else []
     alive = [p for p in reg if p in live]
     if alive != reg:
-        REGISTRY.write_text("".join(p + "\n" for p in alive))
-    return next((p for p in alive if live[p]["window_id"] == anchor["window_id"]
-                 and live[p]["workspace"] == anchor["workspace"]), None)
+        registry().write_text("".join(p + "\n" for p in alive))
+    here = lambda p: p["window_id"] == anchor["window_id"] and p["workspace"] == anchor["workspace"]
+    found = next((p for p in alive if here(live[p])), None)
+    if found is None:  # started by the WezTerm startup layout, not yet seen by this helper
+        found = next((i for i, p in live.items() if p["title"] == AGENT_TITLE and here(p)), None)
+        if found is not None:
+            register(found)
+    return found
 
 
 def is_clean_prompt(lines: list[str]) -> bool:
@@ -114,19 +141,33 @@ def is_destructive(cmd: str) -> bool:
     return bool(DESTRUCTIVE_RE.search(cmd))
 
 
+def gui_pid() -> int:
+    clients = json.loads(wez("list-clients", "--format", "json"))
+    if not clients:
+        sys.exit("no WezTerm GUI client attached; ask the operator to launch WezTerm")
+    return clients[0]["pid"]
+
+
+def registry() -> Path:
+    """Per-GUI-process registry: pane ids restart when WezTerm restarts, so old entries must not carry over."""
+    return REGISTRY.with_name(f"{REGISTRY.name}.{gui_pid()}")
+
+
 def owned(pane: str) -> bool:
-    return REGISTRY.exists() and pane in REGISTRY.read_text().split()
+    return registry().exists() and pane in registry().read_text().split()
 
 
 def register(pane: str) -> None:
-    REGISTRY.parent.mkdir(parents=True, exist_ok=True)
-    with REGISTRY.open("a") as f:
+    if owned(pane):
+        return
+    registry().parent.mkdir(parents=True, exist_ok=True)
+    with registry().open("a") as f:
         f.write(pane + "\n")
 
 
 def unregister(pane: str) -> None:
-    if REGISTRY.exists():
-        REGISTRY.write_text("".join(p + "\n" for p in REGISTRY.read_text().split() if p != pane))
+    if registry().exists():
+        registry().write_text("".join(p + "\n" for p in registry().read_text().split() if p != pane))
 
 
 def send(pane: str, text: str) -> None:
@@ -153,6 +194,8 @@ def main(argv: list[str]) -> int:
     sp.add_argument("--tab", action="store_true", help="new tab instead of a split beside the anchor"); sp.add_argument("cmd", nargs="*")
     sub.add_parser("where")
     en = sub.add_parser("ensure"); en.add_argument("--cwd"); en.add_argument("--anchor")
+    en.add_argument("--spawn-if-missing", action="store_true", help="create the agent pane if the layout didn't")
+    st = sub.add_parser("status"); st.add_argument("--anchor")
     se = sub.add_parser("send"); se.add_argument("pane"); se.add_argument("command")
     se.add_argument("--expect", default=PROMPT_RE); se.add_argument("--timeout", type=float, default=15)
     se.add_argument("--confirmed", action="store_true", help="operator approved a destructive command")
@@ -169,15 +212,28 @@ def main(argv: list[str]) -> int:
     if a.op == "ensure":
         anchor = resolve_anchor(a.anchor)
         pane = find_agent_pane(anchor)
+        if pane is None and not a.spawn_if_missing:
+            sys.exit("no agent pane in the operator's window; start WezTerm with the agent layout (see AGENTS.md), "
+                     "or pass --spawn-if-missing")
         if pane is None:
             pane = spawn_pane(anchor, a.cwd, [], False)
         else:
             reset_pane(pane, a.cwd)
         print(pane)
         return 0
+    if a.op == "status":
+        anchor = resolve_anchor(a.anchor)
+        pane = find_agent_pane(anchor)
+        if pane is None:
+            sys.exit("no agent pane in the operator's window")
+        info = next(p for p in panes() if str(p["pane_id"]) == pane)
+        print(f"agent pane={pane} window={info['window_id']} title={info['title']} tty={info['tty_name']}")
+        print(subprocess.run(["ps", "-t", info["tty_name"].removeprefix("/dev/"), "-o", "pid,command"],
+                             capture_output=True, text=True).stdout.rstrip())
+        return 0
     if a.op == "where":
         o = operator_pane()
-        print(f"operator pane={o['pane_id']} window={o['window_id']} workspace={o['workspace']} title={o['title']}")
+        print(f"focused pane={o['pane_id']} window={o['window_id']} workspace={o['workspace']} title={o['title']}")
         return 0
     if not owned(a.pane):
         sys.exit(f"refusing: pane {a.pane} was not spawned by this tool")
