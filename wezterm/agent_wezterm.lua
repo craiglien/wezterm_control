@@ -5,6 +5,9 @@ local agent = dofile(os.getenv('WEZ_CONTROL_DIR') .. '/wezterm/agent_layout.lua'
 
 local config = wezterm.config_builder()
 config.window_background_opacity = 1.0
+-- Scroll bar so the operator can see (and drag back from) a scrolled-up view while the agent keeps printing.
+config.enable_scroll_bar = true
+config.colors = { scrollbar_thumb = '#8a8a8a' }
 
 wezterm.on('gui-startup', function(cmd)
   agent.spawn_window(wezterm.mux, cmd)
