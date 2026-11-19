@@ -6,7 +6,7 @@ WezTerm GUI pane through `wezterm cli` instead; the human watches it and can tak
 Applies to any interactive CLI (telnet, serial console, ssh, REPL, installer). Telnet to network gear is just one example.
 
 ## Hard rules
-- Bash only. Panes are spawned as `bash --norc --noprofile` (prompt `[wez]$ `). Never zsh or another shell.
+- Bash only. Panes are spawned as `bash --norc --noprofile` (prompt `wez(bash)$ `). Never zsh or another shell.
 - Use the helper, `scripts/wez_expect.py`, run as `uv run --no-project python3 -I scripts/wez_expect.py ...`.
 - Check `wezterm cli list` first. If no GUI is running, stop and ask the operator to launch WezTerm.
 - Only touch panes you spawned (the helper enforces this via a registry). Never the operator's own panes.
@@ -23,7 +23,7 @@ Applies to any interactive CLI (telnet, serial console, ssh, REPL, installer). T
 ## The dedicated WezTerm
 This work uses dedicated WezTerms, never the operator's regular one. The operator starts one from a terminal outside
 WezTerm: `scripts/start_wezterm.sh NAME` (`--list` shows running ones). Names are unique; a duplicate is refused. It opens
-one window with one pane: bash (`bash --norc --noprofile`, prompt `[wez]$ `), titled `agent`, with a `== AGENT PANE (bash) == NAME ==`
+one window with one pane: bash (`bash --norc --noprofile`, prompt `wez(bash)$ `), titled `agent`, with a `== AGENT PANE (bash) == NAME ==`
 banner and the window title `AGENT: NAME`, and prints a prompt for the operator to paste into the Claude Code session that will drive it (also saved to
 `~/.cache/wez_expect/NAME.prompt`). The instance runs with `--class wezctl-NAME`.
 
@@ -33,7 +33,7 @@ the agent pane is closed, the window closes with it; ask the operator to re-run 
 
 Start every task with `P=$(wez_expect.py ensure --cwd "$PWD")`.
 - It finds the agent pane and reuses it. It never creates a pane unless you pass `--spawn-if-missing`.
-- On reuse it requires a clean `[wez]$` prompt (otherwise the human is mid-command: stop and ask), then runs
+- On reuse it requires a clean `wez(bash)$` prompt (otherwise the human is mid-command: stop and ask), then runs
   `cd <cwd>`. It does not clear the screen, so the operator can scroll back through the whole session.
 - While testing, add `--announce` (or `WEZ_ANNOUNCE=1`) so `status` and `ensure` print a `# == agent: <op> ==` marker line in the
   pane for the operator. Off by default: real work runs many commands and should stay quiet.
@@ -48,7 +48,7 @@ Start every task with `P=$(wez_expect.py ensure --cwd "$PWD")`.
     wez_expect.py close $P
 
 - `send` types the command plus `\r` with `--no-paste` (CR, not LF; bracketed paste can stall console prompts), then polls
-  until `--expect` matches. The default is the `[wez]$ ` prompt. For a telnet session, pass the device prompt, e.g.
+  until `--expect` matches. The default is the `wez(bash)$ ` prompt. For a telnet session, pass the device prompt, e.g.
   `--expect 'Router[>#]\s*$'`.
 - `--no-enter` sends text without the CR, for control keys: `send $P $'\x1d' --no-enter --expect 'telnet>\s*$'` is telnet's
   escape, then `send $P quit`.

@@ -8,7 +8,7 @@ M.name = os.getenv('WEZ_INSTANCE_NAME') or 'default'  -- set by scripts/start_we
 M.args = {
   'bash', '-c',
   "printf '\\033]2;agent\\007'; printf '== AGENT PANE (bash) == %s ==\\n' '" .. M.name .. "'; "
-    .. "exec env 'PS1=[wez]$ ' bash --norc --noprofile",
+    .. "exec env 'PS1=wez(bash)$ ' bash --norc --noprofile",
 }
 
 -- Opens the single agent window. `cmd` is the gui-startup spawn command, if any. Returns the window.

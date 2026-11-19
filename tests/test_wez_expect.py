@@ -9,15 +9,15 @@ import wez_expect as w
 
 
 def test_delta_includes_echo_line_and_new_output():
-    before = ["[wez]$"]
-    after = ["[wez]$ echo hi", "hi", "[wez]$"]
+    before = ["wez(bash)$"]
+    after = ["wez(bash)$ echo hi", "hi", "wez(bash)$"]
     assert w.delta(before, after) == after
 
 
 def test_delta_after_scroll_keeps_only_new():
-    before = ["a", "b", "[wez]$"]
-    after = ["a", "b", "[wez]$ ls", "x", "[wez]$"]
-    assert w.delta(before, after) == ["[wez]$ ls", "x", "[wez]$"]
+    before = ["a", "b", "wez(bash)$"]
+    after = ["a", "b", "wez(bash)$ ls", "x", "wez(bash)$"]
+    assert w.delta(before, after) == ["wez(bash)$ ls", "x", "wez(bash)$"]
 
 
 def test_destructive():
@@ -45,7 +45,7 @@ def test_registry_is_per_gui_process(tmp_path, monkeypatch):
 
 def test_lua_layout_matches_helper():
     lua = (Path(__file__).parent.parent / "wezterm" / "agent_layout.lua").read_text()
-    assert w.AGENT_TITLE in lua and "PS1=[wez]$ " in lua and "--norc --noprofile" in lua
+    assert w.AGENT_TITLE in lua and "PS1=wez(bash)$ " in lua and "--norc --noprofile" in lua
 
 
 def test_instance_name_required(monkeypatch):

@@ -23,7 +23,7 @@ interactive CLI. The main target is telnet sessions to lab devices.
 - **The helper needs an instance name** (`--instance` / `WEZ_INSTANCE`), no default and no auto-pick, so a session can't
   drive the wrong WezTerm. Closed or unknown names fail loudly. The start script prints a pasteable prompt carrying the name.
 - **`ensure` reuses the agent pane** and never creates panes unless `--spawn-if-missing`. On reuse it requires a clean
-  `[wez]$` prompt (otherwise a human is mid-command: stop), then runs `cd <dir>`. It never clears the screen: the operator wants to watch, so history and the banner stay.
+  `wez(bash)$` prompt (otherwise a human is mid-command: stop), then runs `cd <dir>`. It never clears the screen: the operator wants to watch, so history and the banner stay.
   While testing, `--announce` (or `WEZ_ANNOUNCE=1`) prints `# == agent: <op> ==` marker lines in the pane; off by default so real
   work isn't noisy.
 - **Closing the only pane closes the window.** The instance is gone and must be restarted with the start script.

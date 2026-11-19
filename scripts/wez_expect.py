@@ -2,7 +2,7 @@
 """Drive a pane in a running WezTerm GUI via `wezterm cli`. Stdlib only.
 
 Usage (global: --instance NAME or WEZ_INSTANCE=NAME, required; --announce, or WEZ_ANNOUNCE=1, prints marker lines in the pane while testing):
-  wez_expect.py spawn [--anchor PANE] [--tab] [--cwd DIR] [-- CMD...]   # default CMD: bash (prompt '[wez]$ ')
+  wez_expect.py spawn [--anchor PANE] [--tab] [--cwd DIR] [-- CMD...]   # default CMD: bash (prompt 'wez(bash)$ ')
   wez_expect.py ensure [--anchor PANE] [--cwd DIR]   # reuse the agent pane (spawn only with --spawn-if-missing); prints pane id
   wez_expect.py status [--anchor PANE]          # prove which pane is the agent's and what it is running
   wez_expect.py where                           # show the focused pane in the dedicated WezTerm
@@ -13,7 +13,7 @@ Usage (global: --instance NAME or WEZ_INSTANCE=NAME, required; --announce, or WE
 import argparse, json, os, re, shlex, subprocess, sys, time
 from pathlib import Path
 
-PROMPT_RE = r"\[wez\]\$\s*$"
+PROMPT_RE = r"wez\(bash\)\$\s*$"
 PAGER_RE = r"--More--|\(END\)"
 DESTRUCTIVE_RE = re.compile(
     r"\brm\s+-\w*r\w*|\b(erase|write\s+erase|reload|format|delete|mkfs|shutdown|reboot)\b|\bdd\s+if=", re.I
@@ -77,7 +77,7 @@ def operator_pane() -> dict:
 AGENT_TITLE = "agent"
 DEFAULT_CMD = [
     "bash", "-c",
-    f"printf '\\033]2;{AGENT_TITLE}\\007'; printf '== AGENT PANE (bash) ==\\n'; exec env 'PS1=[wez]$ ' bash --norc --noprofile",
+    f"printf '\\033]2;{AGENT_TITLE}\\007'; printf '== AGENT PANE (bash) ==\\n'; exec env 'PS1=wez(bash)$ ' bash --norc --noprofile",
 ]
 
 
@@ -121,7 +121,7 @@ def find_agent_pane(anchor: dict) -> str | None:
 
 
 def is_clean_prompt(lines: list[str]) -> bool:
-    return bool(lines) and re.fullmatch(r"\[wez\]\$", lines[-1]) is not None
+    return bool(lines) and re.fullmatch(r"wez\(bash\)\$", lines[-1]) is not None
 
 
 def announce(pane: str, msg: str) -> None:
@@ -135,7 +135,7 @@ def announce(pane: str, msg: str) -> None:
 def reset_pane(pane: str, cwd: str | None) -> None:
     """Between tasks: require a clean prompt (else the human is mid-command), then cd. History stays on screen."""
     if not is_clean_prompt(get_lines(pane)):
-        sys.exit(f"pane {pane} is not at a clean '[wez]$' prompt; human takeover needed")
+        sys.exit(f"pane {pane} is not at a clean 'wez(bash)$' prompt; human takeover needed")
     announce(pane, "ensure")
     before = get_lines(pane)
     send(pane, f"cd {shlex.quote(cwd or os.getcwd())}\r")
